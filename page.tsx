@@ -55,17 +55,26 @@ export default async function HomePage() {
               <li className="rounded-xl border border-white/10 bg-slate-900/50 p-4">
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-white">Free</span>
-                  <span className="text-xs text-slate-400">1 resume</span>
+                  <span className="text-xs text-slate-400">$0 · 5 analyses/month</span>
                 </div>
                 <p className="mt-2 text-slate-400">Core ATS workflow, classic template, PDF export.</p>
               </li>
               <li className="rounded-xl border border-forge-500/30 bg-forge-950/40 p-4">
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-white">Pro</span>
-                  <span className="text-xs text-forge-200">via Stripe</span>
+                  <span className="font-semibold text-white">Starter</span>
+                  <span className="text-xs text-forge-200">$9.99 · 100/year</span>
                 </div>
                 <p className="mt-2 text-slate-300">
-                  Unlimited resumes, cover letters, and premium templates — all in one subscription.
+                  Paid plan with 100 analyses per year, cover letters, and premium templates.
+                </p>
+              </li>
+              <li className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-4">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-white">Unlimited</span>
+                  <span className="text-xs text-amber-200">$100 · 2 years</span>
+                </div>
+                <p className="mt-2 text-slate-300">
+                  Unlimited analyses for two years with all premium features.
                 </p>
               </li>
             </ul>
