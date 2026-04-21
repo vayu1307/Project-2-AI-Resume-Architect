@@ -7,12 +7,12 @@ import type { KeywordItem, ResumeContent } from "@/types/resume";
 import { emptyResumeContent } from "@/types/resume";
 
 type Props = {
-  initialTier: "FREE" | "PRO";
+  initialTier: "FREE" | "YEARLY_999" | "TWO_YEAR_UNLIMITED";
 };
 
 export function ResumeStudio({ initialTier }: Props) {
   const { data: session, update } = useSession();
-  const tier = (session?.user?.tier as "FREE" | "PRO" | undefined) ?? initialTier;
+  const tier = (session?.user?.tier as "FREE" | "YEARLY_999" | "TWO_YEAR_UNLIMITED" | undefined) ?? initialTier;
 
   const [title, setTitle] = useState("Target role resume");
   const [rawResumeText, setRawResumeText] = useState("");
@@ -26,6 +26,12 @@ export function ResumeStudio({ initialTier }: Props) {
   const [templateId, setTemplateId] = useState("classic");
   const [resumeId, setResumeId] = useState<string | null>(null);
   const [savedList, setSavedList] = useState<{ id: string; title: string; atsScore: number }[]>([]);
+  const [quotaInfo, setQuotaInfo] = useState<{
+    limit: number | null;
+    used: number;
+    remaining: number | null;
+    windowLabel: string;
+  } | null>(null);
 
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +80,7 @@ export function ResumeStudio({ initialTier }: Props) {
       if (!res.ok) throw new Error(data.error || "Analysis failed");
       setAnalysis(data.analysis);
       setKeywords(data.keywords ?? []);
+      if (data.quota) setQuotaInfo(data.quota);
       if (typeof data.jdTextUsed === "string" && !jdText.trim()) {
         setJdText(data.jdTextUsed.slice(0, 8000));
       }
@@ -213,20 +220,29 @@ export function ResumeStudio({ initialTier }: Props) {
     }
   }
 
-  async function checkoutPro() {
-    setBusy("stripe");
-    setError(null);
-    try {
-      const res = await fetch("/api/stripe/checkout", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Checkout failed");
-      if (data.url) window.location.href = data.url as string;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Checkout failed");
-    } finally {
-      setBusy(null);
-    }
+  // ✅ FIXED — safe parsing + better error messages
+  async function checkoutPlan(planCode: "YEARLY_999" | "TWO_YEAR_UNLIMITED") {
+  setBusy("stripe");
+  setError(null);
+  try {
+    const res = await fetch("/api/stripe/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ planCode }),
+    });
+
+    // ✅ Read as text first — .json() throws if body is empty
+    const text = await res.text();
+    const data = text ? JSON.parse(text) : {};
+
+    if (!res.ok) throw new Error(data?.error ?? `Request failed (${res.status})`);
+    if (data.url) window.location.href = data.url as string;
+  } catch (e) {
+    setError(e instanceof Error ? e.message : "Checkout failed");
+  } finally {
+    setBusy(null);
   }
+}
 
   const loadResume = useCallback(async (id: string) => {
     setBusy("load");
@@ -270,6 +286,7 @@ export function ResumeStudio({ initialTier }: Props) {
   }, []);
 
   const keywordPreview = useMemo(() => keywords.slice(0, 18), [keywords]);
+  const tierLabel = formatTier(tier);
 
   return (
     <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
@@ -383,10 +400,10 @@ export function ResumeStudio({ initialTier }: Props) {
               >
                 <option value="classic">Classic (free)</option>
                 <option value="minimal">Minimal (free)</option>
-                <option value="premium" disabled={tier !== "PRO"}>
+                <option value="premium" disabled={tier === "FREE"}>
                   Premium (Pro)
                 </option>
-                <option value="executive" disabled={tier !== "PRO"}>
+                <option value="executive" disabled={tier === "FREE"}>
                   Executive (Pro)
                 </option>
               </select>
@@ -441,9 +458,9 @@ export function ResumeStudio({ initialTier }: Props) {
             ) : null}
           </div>
 
-          {tier === "PRO" ? (
+          {tier !== "FREE" ? (
             <div className="mt-6 border-t border-white/10 pt-6">
-              <h3 className="text-sm font-semibold text-white">Cover letter (Pro)</h3>
+              <h3 className="text-sm font-semibold text-white">Cover letter (Paid plans)</h3>
               <button
                 type="button"
                 className="btn btn-ghost mt-3"
@@ -472,15 +489,50 @@ export function ResumeStudio({ initialTier }: Props) {
         <div className="glass p-5">
           <h3 className="font-display text-sm font-semibold text-white">Account</h3>
           <p className="mt-2 text-sm text-slate-400">
-            Plan: <span className="text-white">{tier}</span>
+            Plan: <span className="text-white">{tierLabel}</span>
           </p>
-          {tier === "FREE" ? (
-            <button type="button" className="btn btn-primary mt-4 w-full" onClick={() => void checkoutPro()} disabled={!!busy}>
-              {busy === "stripe" ? "Redirecting…" : "Upgrade to Pro"}
-            </button>
-          ) : (
-            <p className="mt-4 text-xs text-slate-500">Pro includes unlimited resumes, cover letters, and premium templates.</p>
-          )}
+          <div className="mt-4 space-y-2">
+            {tier === "FREE" ? (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-primary w-full"
+                  onClick={() => void checkoutPlan("YEARLY_999")}
+                  disabled={!!busy}
+                >
+                  {busy === "stripe" ? "Redirecting…" : "Buy $9.99 plan (100/year)"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost w-full"
+                  onClick={() => void checkoutPlan("TWO_YEAR_UNLIMITED")}
+                  disabled={!!busy}
+                >
+                  {busy === "stripe" ? "Redirecting…" : "Buy $100 plan (2y unlimited)"}
+                </button>
+              </>
+            ) : (
+              <p className="text-xs text-slate-500">
+                Paid plan active. Cover letters and premium templates are enabled.
+              </p>
+            )}
+            <div className="rounded-lg border border-white/10 bg-slate-900/40 p-3 text-xs text-slate-400">
+              {quotaInfo ? (
+                quotaInfo.limit === null ? (
+                  <p>Analysis quota: Unlimited ({quotaInfo.windowLabel}).</p>
+                ) : (
+                  <p>
+                    Analysis quota: {quotaInfo.used}/{quotaInfo.limit} used ({quotaInfo.windowLabel}),{" "}
+                    {quotaInfo.remaining} remaining.
+                  </p>
+                )
+              ) : (
+                <p>
+                  Free: 5/month · $9.99: 100/year · $100: unlimited for 2 years.
+                </p>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="glass p-5">
@@ -509,4 +561,10 @@ export function ResumeStudio({ initialTier }: Props) {
       </aside>
     </div>
   );
+}
+
+function formatTier(tier: "FREE" | "YEARLY_999" | "TWO_YEAR_UNLIMITED"): string {
+  if (tier === "YEARLY_999") return "Starter $9.99 (100/year)";
+  if (tier === "TWO_YEAR_UNLIMITED") return "Unlimited $100 (2 years)";
+  return "Free $0";
 }
