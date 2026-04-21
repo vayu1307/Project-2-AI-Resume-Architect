@@ -4,15 +4,39 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getStripe } from "@/lib/stripe";
 
-export async function POST() {
+const PLAN_PRICE_ENV: Record<string, { priceId?: string; envNames: string[] }> = {
+  YEARLY_999: {
+    // Keep STRIPE_PRICE_PRO as backwards-compatible fallback for existing setups.
+    priceId: process.env.STRIPE_PRICE_YEARLY_999 ?? process.env.STRIPE_PRICE_PRO,
+    envNames: ["STRIPE_PRICE_YEARLY_999", "STRIPE_PRICE_PRO (fallback)"],
+  },
+  TWO_YEAR_UNLIMITED: {
+    priceId: process.env.STRIPE_PRICE_TWO_YEAR_UNLIMITED,
+    envNames: ["STRIPE_PRICE_TWO_YEAR_UNLIMITED"],
+  },
+};
+
+export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id || !session.user.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const priceId = process.env.STRIPE_PRICE_PRO;
+  const body = await req.json().catch(() => ({}));
+  const planCode = typeof body.planCode === "string" ? body.planCode : "";
+  if (!(planCode in PLAN_PRICE_ENV)) {
+    return NextResponse.json({ error: "Invalid plan selected" }, { status: 400 });
+  }
+
+  const selectedPlan = PLAN_PRICE_ENV[planCode];
+  const priceId = selectedPlan.priceId;
   if (!priceId) {
-    return NextResponse.json({ error: "Stripe price is not configured" }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: `Stripe price is not configured for selected plan. Expected: ${selectedPlan.envNames.join(" or ")}`,
+      },
+      { status: 500 },
+    );
   }
 
   const user = await prisma.user.findUnique({ where: { id: session.user.id } });
@@ -37,15 +61,12 @@ export async function POST() {
   }
 
   const checkout = await stripe.checkout.sessions.create({
-    mode: "subscription",
+    mode: "payment",
     customer: customerId,
     line_items: [{ price: priceId, quantity: 1 }],
     success_url: `${origin}/dashboard?checkout=success`,
     cancel_url: `${origin}/dashboard?checkout=cancel`,
-    metadata: { userId: user.id },
-    subscription_data: {
-      metadata: { userId: user.id },
-    },
+    metadata: { userId: user.id, planCode },
   });
 
   if (!checkout.url) {
