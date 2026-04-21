@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { analyzeJobDescription, fetchJobDescriptionFromUrl, keywordsToItems } from "@/lib/jd-agent";
+import { consumeAnalysisQuota, getAnalysisAllowance } from "@/lib/subscription";
 
 const bodySchema = z.object({
   jdText: z.string().optional(),
@@ -33,13 +34,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Job description is too short" }, { status: 400 });
     }
 
+    const quota = await consumeAnalysisQuota(session.user.id);
+    if (!quota.allowed && quota.limit !== null && quota.remaining === 0) {
+      return NextResponse.json(
+        {
+          error: quota.message ?? "Plan analysis limit reached.",
+          quota,
+        },
+        { status: 403 },
+      );
+    }
+
     const analysis = await analyzeJobDescription(jdText);
     const keywords = keywordsToItems(analysis);
+    const allowance = await getAnalysisAllowance(session.user.id);
 
     return NextResponse.json({
       analysis,
       keywords,
       jdTextUsed: jdText.slice(0, 24000),
+      quota: allowance,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Analysis failed";
