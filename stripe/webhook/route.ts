@@ -31,60 +31,25 @@ export async function POST(req: Request) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
         const userId = session.metadata?.userId;
-        const subId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
-        if (userId && subId) {
-          const stripe = getStripe();
-          const sub = await stripe.subscriptions.retrieve(subId);
-          const priceId = sub.items.data[0]?.price?.id;
-          await prisma.user.update({
-            where: { id: userId },
-            data: {
-              tier: "PRO",
-              stripeSubscriptionId: sub.id,
-              stripePriceId: priceId ?? null,
-              stripeCurrentPeriodEnd: sub.current_period_end
-                ? new Date(sub.current_period_end * 1000)
-                : null,
-            },
-          });
-        }
-        break;
-      }
-      case "customer.subscription.updated":
-      case "customer.subscription.deleted": {
-        const subscription = event.data.object as Stripe.Subscription;
-        let userId: string | undefined = subscription.metadata?.userId;
-        if (!userId && typeof subscription.customer === "string") {
-          const u = await prisma.user.findFirst({
-            where: { stripeCustomerId: subscription.customer },
-          });
-          userId = u?.id ?? undefined;
-        }
-        if (!userId) break;
-
-        if (subscription.status === "active" || subscription.status === "trialing") {
-          const priceId = subscription.items.data[0]?.price?.id;
-          await prisma.user.update({
-            where: { id: userId },
-            data: {
-              tier: "PRO",
-              stripeSubscriptionId: subscription.id,
-              stripePriceId: priceId ?? null,
-              stripeCurrentPeriodEnd: subscription.current_period_end
-                ? new Date(subscription.current_period_end * 1000)
-                : null,
-            },
-          });
-        } else {
-          await prisma.user.update({
-            where: { id: userId },
-            data: {
-              tier: "FREE",
-              stripeSubscriptionId: null,
-              stripePriceId: null,
-              stripeCurrentPeriodEnd: null,
-            },
-          });
+        const planCode = session.metadata?.planCode;
+        if (userId && planCode) {
+          const now = new Date();
+          const planDurationYears =
+            planCode === "TWO_YEAR_UNLIMITED" ? 2 : planCode === "YEARLY_999" ? 1 : 0;
+          if (planDurationYears > 0) {
+            const expiresAt = new Date(now);
+            expiresAt.setFullYear(expiresAt.getFullYear() + planDurationYears);
+            await prisma.user.update({
+              where: { id: userId },
+              data: {
+                tier: planCode === "TWO_YEAR_UNLIMITED" ? "TWO_YEAR_UNLIMITED" : "YEARLY_999",
+                stripePriceId: planCode,
+                stripeCurrentPeriodEnd: expiresAt,
+                planStartAt: now,
+                planExpiresAt: expiresAt,
+              },
+            });
+          }
         }
         break;
       }
