@@ -1,6 +1,6 @@
 import { DefaultSession } from "next-auth";
 
-type Tier = "FREE" | "PRO";
+type Tier = "FREE" | "YEARLY_999" | "TWO_YEAR_UNLIMITED";
 
 declare module "next-auth" {
   interface Session {
