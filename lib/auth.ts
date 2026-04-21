@@ -39,7 +39,10 @@ export const authOptions: NextAuthOptions = {
       const email = (token.email as string) || undefined;
       if (email) {
         const u = await prisma.user.findUnique({ where: { email } });
-        if (u) token.tier = u.tier;
+        if (u) {
+          const expired = !!u.planExpiresAt && u.planExpiresAt <= new Date();
+          token.tier = expired ? "FREE" : u.tier;
+        }
       }
       return token;
     },
