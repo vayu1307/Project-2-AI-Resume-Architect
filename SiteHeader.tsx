@@ -15,7 +15,7 @@ export async function SiteHeader() {
           {session ? (
             <>
               <span className="hidden text-slate-400 sm:inline">
-                {session.user.tier === "PRO" ? "Pro" : "Free"}
+                {session.user.tier === "FREE" ? "Free" : "Paid"}
               </span>
               <Link href="/dashboard" className="btn btn-primary px-3 py-2">
                 Dashboard
