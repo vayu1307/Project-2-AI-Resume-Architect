@@ -9,7 +9,8 @@ datasource db {
 
 enum SubscriptionTier {
   FREE
-  PRO
+  YEARLY_999
+  TWO_YEAR_UNLIMITED
 }
 
 model User {
@@ -24,10 +25,13 @@ model User {
   stripeSubscriptionId   String?
   stripePriceId          String?
   stripeCurrentPeriodEnd DateTime?
+  planStartAt            DateTime?
+  planExpiresAt          DateTime?
 
   accounts Account[]
   sessions Session[]
   resumes  Resume[]
+  analysisUsages AnalysisUsage[]
 }
 
 model Account {
@@ -81,4 +85,14 @@ model Resume {
   updatedAt   DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AnalysisUsage {
+  id        String   @id @default(cuid())
+  userId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
